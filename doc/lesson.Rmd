@@ -1,14 +1,42 @@
----
-title: "Draft R Markdown document"
-author: "Your Name"
-output: html_document
----
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+
 
 ```{r}
-# Code chunk
+significant_NR_genes <- dgeResults[["NR_effect"]] %>% 
+  filter(FDR < 0.05)
+
+NR_genes <- final_matrix %>% 
+  filter(rownames(final_matrix) %in% significant_NR_genes$rn)
+
+  heatmap <- pheatmap(NR_genes,
+                      treeheight_col = 0,
+                      treeheight_row = 0,
+                      scale = "row",
+                      legend = T,
+                      na_col = "white",
+                      Colv = NA,
+                      na.rm = T,
+                      cluster_cols = F,
+                      fontsize_row = 1,
+                      fontsize_col = 3,
+                      cellwidth = 3,
+                      cellheight = 1,
+                      main = "Genes affected by NR"
+  )
+  heatmap
+  ggsave(heatmap, filename = here("data/figures/NAD_heatmap_significant.png"), scale = 1)
+
+volcano_genes <- significant_NR_genes %>% 
+  filter(logFC >5)
+  
+volcano_plot <-  ggplot(significant_NR_genes, aes(x = logFC, y = -log10(FDR))) +
+    geom_point()+
+  geom_text(aes(x = logFC, y = -log10(FDR), label = rn), data = significant_NR_genes[significant_NR_genes$rn %in% volcano_genes$rn,],
+             nudge_x = 0.02,
+              nudge_y = 0.05,
+              check_overlap = T)
+
+ ggsave(volcano_plot, filename = here("data/figures/NAD_terms.png"), scale = 2.5)
+  
 ```
 
