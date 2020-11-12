@@ -40,3 +40,330 @@ volcano_plot <-  ggplot(significant_NR_genes, aes(x = logFC, y = -log10(FDR))) +
   
 ```
 
+```{r}
+
+heatmap_generator <- function(count_matrix){
+  Selected_candidates <- c("ADAMTS14",
+"PRND",
+"COL1A1",
+"MXRA5Y",
+"DES",
+"PTX3",
+"LRRTM4",
+"CXCL11",
+"LIPG",
+"NR4A1AS",
+"GOLGA5P1",
+"APLN",
+"KCNU1",
+"SLC2A5",
+"CXCL10",
+"DCX",
+"CHI3L2",
+"CHST1",
+"AC134312.1",
+"LILRA5",
+"ABCB5",
+"SIGLEC10",
+"ELOVL6",
+"ADCYAP1",
+"SERPINA1",
+"PYCR1",
+"AC253576.2",
+"FLG2"
+)
+  Selected_candidates <- as.data.table(Selected_candidates)
+  setnames(Selected_candidates, "Selected_candidates", "Gene")
+
+  Candidates_raw <- count_matrix%>%
+    filter(rownames(count_matrix) %in% Selected_candidates$Gene)
+ Candidate_groups <- setup %>% 
+   dplyr::select(ID, Group) 
+
+   rownames(Candidate_groups) = Candidate_groups$ID
+ Candidate_groups <- Candidate_groups %>% 
+   dplyr::select(-ID)
+    heatmap <- pheatmap(Candidates_raw,
+                      treeheight_col = 0,
+                      treeheight_row = 0,
+                      scale = "row",
+                      legend = T,
+                      na_col = "white",
+                      Colv = NA,
+                      na.rm = T,
+                      cluster_cols = F,
+                      fontsize_row = 5,
+                      fontsize_col = 5,
+                      cellwidth = 5,
+                      cellheight = 7,
+                      annotation_col = Candidate_groups
+  )
+  ggsave(heatmap, filename = here::here("data/figures/Test_heatmap.png"), scale = 1.5)
+  heatmap
+}
+
+```
+
+```{r}
+
+
+Candidates_for_sum <- Candidates_raw %>% 
+  mutate(Gene = rownames(Candidates_raw))
+
+raw_data_tidy <- pivot_longer(Candidates_for_sum, names_to = "ID",
+              values_to = "abundance",
+             cols= -Gene)
+View(raw_data_tidy)
+
+raw_data_plot <- inner_join(raw_data_tidy, setup)
+
+raw_data_plot <- as.data.frame(raw_data_plot)
+raw_data_plot <- raw_data_plot %>%
+  dplyr::select(-Group)
+
+summary_candidates_raw <- summarySE(raw_data_plot,
+                                measurevar = "abundance",
+                                groupvars = c("Gene", "Time", "Treatment"),
+                                na.rm = T) %>%
+  unite(Group, Time, Treatment, sep = "_", remove = F)
+
+
+ggplot(summary_candidates_raw,
+       aes(x = Group, 
+           y = abundance, 
+           fill = Group))+
+  geom_col()+
+  facet_wrap(~Gene)
+
+summary_candidates_raw$Group  <- factor(summary_candidates_raw$Group, levels = c("A_Placebo", "A_NR", "B_Placebo", "B_NR"))
+
+Flg2 <- 
+  ggplot(subset(summary_candidates_raw, Gene == "FLG2"), 
+       aes(x = Group, 
+           y = abundance))+
+  geom_col()+
+  ggtitle("FLG2")+
+  geom_errorbar(aes(ymin=abundance-se, 
+                    ymax = abundance+se), 
+                width = .1) 
+
+Adamts14 <- 
+  ggplot(subset(summary_candidates_raw, Gene == "ADAMTS14"), 
+       aes(x = Group, 
+           y = abundance))+
+  geom_col()+
+  ggtitle("Adamts14")+
+  geom_errorbar(aes(ymin=abundance-se, 
+                    ymax = abundance+se), 
+                width = .1) 
+
+
+
+Adamts14
+Flg2
+
+
+```
+```{r}
+Quality_control_plots <- function(count_matrix, setup) {
+  group <- as.matrix(setup$Group)
+  RNAseq <- edgeR::DGEList(counts = count_matrix, group = group)
+  
+  pD <-
+    reshape2::melt(cpm(RNAseq, normalized.lib.sizes = TRUE, log = TRUE))
+  p <- ggplot(pD, aes(value)) +
+    geom_density() +
+    facet_wrap( ~ Var2)
+  dir.create(here("data/figures/QCplots"), showWarnings = F)
+  ggplot2::ggsave(
+    p,
+    filename = here("data/figures/QCplots/Density_plot.png"),
+    width = 12,
+    height = 12,
+    units = "cm",
+    scale = 2.5
+  )
+  
+    #Create mdPlots
+  
+oldpar <- par()$mfrow
+pdf(file.path(here("data/figures/QCplots"), "beforeFiltering_MDS.pdf"), width = 4, height = 4) 
+par(mfrow = c(2, 2))
+for (i in seq_len(ncol(RNAseq))) {
+  plotMD(RNAseq, column = i)
+  abline(h = 0)
+}
+  par(mfrow = oldpar)
+dev.off()
+ #calc norm factors
+  keep <- edgeR::filterByExpr(RNAseq)
+  RNAseq <- RNAseq[keep, , keep.lib.sizes = F]
+  RNAseq <- edgeR::calcNormFactors(RNAseq)
+  
+  #crete mdsPlots
+  mdsData <- plotMDS(RNAseq, ndim = 3, plot = FALSE)
+  mdsData <-
+    mdsData$cmdscale.out %>% data.table(keep.rownames = TRUE) %>%
+    mutate(ID = rownames(RNAseq$samples)) %>%
+    dplyr::select(-rn) %>%
+    mutate(Group = setup$Group)
+  
+  setnames(mdsData,
+           c("V1", "V2", "V3", "ID", "Group"),
+           c("dim1", "dim2", "dim3", "ID", "Group"))
+  
+  pBase <-
+    ggplot(mdsData, aes(x = dim1, y = dim2, colour = Group)) +
+    geom_point(size = 5) +
+    #geom_label(show.legend = FALSE, size = 5) +
+    theme_bw()
+  pBase2 <-
+    ggplot(mdsData, aes(x = dim1, y = dim3, colour = Group)) +
+    geom_point(size = 5) +
+    #geom_label(show.legend = FALSE, size = 5) +
+    theme_bw()
+  
+  pBase3 <-
+    ggplot(mdsData, aes(x = dim2, y = dim3, colour = Group)) +
+    geom_point(size = 5) +
+    #geom_label(show.legend = FALSE, size = 5) +
+    theme_bw()
+  
+  PCA_plots <-
+    gridExtra::grid.arrange(ncol = 1, pBase, pBase2, pBase3)
+  ggplot2::ggsave(PCA_plots, filename = here("data/figures/QCplots/.png"))
+  
+#check MDplots and density after filtering
+
+pdf(file.path(here("data/figures/QCplots"), "afterFiltering_MD.pdf"), width = 4, height = 4) 
+par(mfrow = c(2, 2))
+for (i in seq_len(ncol(RNAseq))) {
+  plotMD(RNAseq, column = i)
+  abline(h = 0)
+}
+  par(mfrow = oldpar)
+dev.off()  
+
+  pD <-
+    reshape2::melt(cpm(RNAseq, normalized.lib.sizes = TRUE, log = TRUE))
+  p <- ggplot(pD, aes(value)) +
+    geom_density() +
+    facet_wrap( ~ Var2)
+  dir.create(here("data/figures/QCplots"), showWarnings = F)
+  ggplot2::ggsave(
+    p,
+    filename = here("data/figures/QCplots/Density_plot_post_filtering.png"),
+    width = 12,
+    height = 12,
+    units = "cm",
+    scale = 2.5
+  )
+  #create Possion heatmap
+    poisd <- PoissonDistance(t(RNAseq$counts))
+  samplePoisDistMatrix <- as.matrix( poisd$dd )
+  rownames(samplePoisDistMatrix) <- colnames(cpm(RNAseq))
+  colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+  
+  heatmap <- pheatmap(samplePoisDistMatrix,  clustering_distance_rows=poisd$dd,clustering_distance_cols=poisd$dd, col=colors)
+  ggsave(heatmap, filename = here("data/figures/QCplots/Poisson_heatmap.png"),
+    width = 12,
+    height = 12,
+    units = "cm",
+    scale = 2.5)
+  print("All your plots can be found in the Figures/QCplots folder")
+}
+
+Quality_control_plots(count_matrix, setup)
+
+
+
+
+
+
+```
+
+
+```{r}
+
+
+poisHeatmap <- function(y)
+{
+
+
+  
+
+  }
+```
+```{r}
+
+redirectToFile <- function(y, file, fun, last = T, ...)
+{
+  pdf(file, width = 4, height = 4) 
+  fun(y, ...) 
+  if(last) dev.off()
+}
+
+rnaPrepare <- function(sumExp, folder = "qcFigures", group, mdsLabel, mdsColour, colScale, design) # Add support for min.count and design in filterByExpr
+{
+  dir.create(here("data/qcFigures"), showWarnings = FALSE, recursive = TRUE)
+  dgeList <- DGEList(counts = count_matrix,
+                     group = group)
+  dgeList %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "beforeFiltering_MD.pdf"), plotMDfun) 
+  dgeList %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "beforeFiltering_density.pdf"), plotDensity) %>%
+    extract(filterByExpr(., design = design), , keep.lib.sizes=FALSE) %>%
+    calcNormFactors %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "afterFiltering_MD.pdf"), plotMDfun) %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "afterFiltering_density.pdf"), plotDensity) 
+ 
+  colScale <- scale_colour_manual(
+  values = c(NR_A = "#a6dba0",
+             NR_B = "#5aae61",
+             Placebo_A = "#1b7837",
+             Placebo_B = "#00441b"),
+  labels = c(NR_A = "NR A",
+             NR_B = "NR B",
+             Placebo_A = "Placebo A",
+             Placebo_B = "Placebe B"))
+
+   
+  dgeList  %T>% redirectToFile(file.path(here("data/qcFigures"), "mdsPlot.pdf"), combinedMDS, label = "group", colour = "group", colScale = colScale) %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "sampleHeatmap.pdf"), poisHeatmap)
+}
+
+chipPrepare <- function(sumExp, here("data/qcFigures") = "qcFigures", group, mdsLabel, mdsColour, colScale) # Add support for min.count and design in filterByExpr
+{
+  dir.create(here("data/qcFigures"), showWarnings = FALSE, recursive = TRUE)
+  
+  dgeList <- DGEList(counts = assay(sumExp, "counts"),
+          group = colData(sumExp)[, group], 
+          samples = colData(sumExp),
+          genes = as.data.frame(rowRanges(sumExp))
+  )
+  dgeList %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "beforeFiltering_MD.pdf"), plotMDfun) %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "beforeFiltering_density.pdf"), plotDensity) %>%
+    extract(filterByExpr(.), , keep.lib.sizes=FALSE)
+  
+  norm <- DGEList(metadata(sumExp)[["binCounts"]], group = colData(sumExp)[, group])
+  norm <- calcNormFactors(norm[filterByExpr(norm), ], 
+                          method = "TMM", 
+                          doWeighting = FALSE
+  )
+  y$samples$lib.size <- norm$samples$lib.size
+  y$samples$norm.factors <- norm$samples$norm.factors
+  
+  y %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "afterFiltering_MD.pdf"), plotMDfun) %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "afterFiltering_density.pdf"), plotDensity) %T>%
+    write.xlsx(x = cpm(y, log = TRUE) %>% 
+                 as.data.table(keep.rownames = TRUE) %>% 
+                 setnames("rn", "peak"), 
+               file = file.path(here("data/qcFigures"), "cpmData.xlsx"), 
+               asTable = FALSE) %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "mdsPlot.pdf"), combinedMDS, label = mdsLabel, colour = mdsColour, colScale = colScale) %T>%
+    redirectToFile(file.path(here("data/qcFigures"), "sampleHeatmap.pdf"), poisHeatmap)
+}
+```
+
