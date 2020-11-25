@@ -185,85 +185,85 @@ PCA_plots <-
 
 ```{r}
 
+  heatmap_generator <- function(count_matrix){
+  Selected_candidates <- c("IL7R",
+"LEF1",
+"ACSL6",
+"CD2",
+"PIM2",
+"MS4A1",
+"HEMGN",
+"SELL",
+"TRIM69",
+"BTLA",
+"CD3E",
+"TRBC2",
+"ITK",
+"CST7",
+"GBP5",
+"POP1",
+"CXCR4",
+"SORL1",
+"PF4",
+"ANKRD36BP2",
+"PADI2",
+"ARHGAP15",
+"SIDT1",
+"CLEC4E",
+"HBB",
+"CCR4",
+"RHOH",
+"FCGR3B",
+"SNORA71B",
+"CAMK4",
+"TRAT1",
+"THEMIS",
+"RASSF8-AS1",
+"CYFIP2",
+"BTN3A2",
+"TENT5C",
+"MGAM"
+)
+  Selected_candidates <- as.data.table(Selected_candidates)
+  setnames(Selected_candidates, "Selected_candidates", "Gene")
 
-poisHeatmap <- function(y)
-{
+  Candidates_raw <- count_matrix%>%
+    filter(rownames(count_matrix) %in% Selected_candidates$Gene)
+ Candidate_groups <- setup %>% 
+   dplyr::select(ID, Group) 
 
+   rownames(Candidate_groups) = Candidate_groups$ID
+ Candidate_groups <- Candidate_groups %>% 
+   dplyr::select(-ID)
 
-  
-
-  }
-```
-```{r}
-
-redirectToFile <- function(y, file, fun, last = T, ...)
-{
-  pdf(file, width = 4, height = 4) 
-  fun(y, ...) 
-  if(last) dev.off()
-}
-
-rnaPrepare <- function(sumExp, folder = "qcFigures", group, mdsLabel, mdsColour, colScale, design) # Add support for min.count and design in filterByExpr
-{
-  dir.create(here("data/qcFigures"), showWarnings = FALSE, recursive = TRUE)
-  dgeList <- DGEList(counts = count_matrix,
-                     group = group)
-  dgeList %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "beforeFiltering_MD.pdf"), plotMDfun) 
-  dgeList %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "beforeFiltering_density.pdf"), plotDensity) %>%
-    extract(filterByExpr(., design = design), , keep.lib.sizes=FALSE) %>%
-    calcNormFactors %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "afterFiltering_MD.pdf"), plotMDfun) %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "afterFiltering_density.pdf"), plotDensity) 
  
-  colScale <- scale_colour_manual(
-  values = c(NR_A = "#a6dba0",
-             NR_B = "#5aae61",
-             Placebo_A = "#1b7837",
-             Placebo_B = "#00441b"),
-  labels = c(NR_A = "NR A",
-             NR_B = "NR B",
-             Placebo_A = "Placebo A",
-             Placebo_B = "Placebe B"))
 
-   
-  dgeList  %T>% redirectToFile(file.path(here("data/qcFigures"), "mdsPlot.pdf"), combinedMDS, label = "group", colour = "group", colScale = colScale) %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "sampleHeatmap.pdf"), poisHeatmap)
+
+ 
+   rownames(Candidate_groups) = Candidate_groups$ID
+ Candidate_groups <- Candidate_groups %>% 
+   dplyr::select(-ID)
+    heatmap <- pheatmap(Candidates_raw,
+                      treeheight_col = 0,
+                      treeheight_row = 0,
+                      scale = "row",
+                      legend = T,
+                      na_col = "white",
+                      Colv = NA,
+                      na.rm = T,
+                      cluster_cols = F,
+                      fontsize_row = 5,
+                      fontsize_col = 5,
+                      cellwidth = 5,
+                      cellheight = 7
+  )
+  ggsave(heatmap, filename = here::here("data/figures/heatmap_CR_largest_FC.png"), scale = 1.5)
+  heatmap
+  
+
 }
 
-chipPrepare <- function(sumExp, here("data/qcFigures") = "qcFigures", group, mdsLabel, mdsColour, colScale) # Add support for min.count and design in filterByExpr
-{
-  dir.create(here("data/qcFigures"), showWarnings = FALSE, recursive = TRUE)
-  
-  dgeList <- DGEList(counts = assay(sumExp, "counts"),
-          group = colData(sumExp)[, group], 
-          samples = colData(sumExp),
-          genes = as.data.frame(rowRanges(sumExp))
-  )
-  dgeList %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "beforeFiltering_MD.pdf"), plotMDfun) %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "beforeFiltering_density.pdf"), plotDensity) %>%
-    extract(filterByExpr(.), , keep.lib.sizes=FALSE)
-  
-  norm <- DGEList(metadata(sumExp)[["binCounts"]], group = colData(sumExp)[, group])
-  norm <- calcNormFactors(norm[filterByExpr(norm), ], 
-                          method = "TMM", 
-                          doWeighting = FALSE
-  )
-  y$samples$lib.size <- norm$samples$lib.size
-  y$samples$norm.factors <- norm$samples$norm.factors
-  
-  y %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "afterFiltering_MD.pdf"), plotMDfun) %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "afterFiltering_density.pdf"), plotDensity) %T>%
-    write.xlsx(x = cpm(y, log = TRUE) %>% 
-                 as.data.table(keep.rownames = TRUE) %>% 
-                 setnames("rn", "peak"), 
-               file = file.path(here("data/qcFigures"), "cpmData.xlsx"), 
-               asTable = FALSE) %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "mdsPlot.pdf"), combinedMDS, label = mdsLabel, colour = mdsColour, colScale = colScale) %T>%
-    redirectToFile(file.path(here("data/qcFigures"), "sampleHeatmap.pdf"), poisHeatmap)
-}
+
+
 ```
 

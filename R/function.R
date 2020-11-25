@@ -72,10 +72,8 @@ Generate_design_matrix <- function(metadata){
 #' @param design Generated with Generate_design_matrix function
 #' @param ctrsts defined in the WATanalysis script
 #'
-#' @return
-#' @export
-#'
-#' @examples
+#' @return a dgeResults list object
+
 RNAseq_processing <- function(count_matrix, metadata, design, ctrsts) {
   group <- as.matrix(metadata[4])
   RNAseq <- edgeR::DGEList(counts = count_matrix, group = group)
@@ -167,6 +165,7 @@ Quality_control_plots <- function(count_matrix, setup) {
   p <- ggplot(pD, aes(value)) +
     geom_density() +
     facet_wrap( ~ Var2)
+  dir.create(here("data/figures"), showWarnings = F)
   dir.create(here("data/figures/QCplots"), showWarnings = F)
   ggplot2::ggsave(
     p,
@@ -188,11 +187,19 @@ Quality_control_plots <- function(count_matrix, setup) {
   }
   par(mfrow = oldpar)
   dev.off()
-  #calc norm factors
-  keep <- edgeR::filterByExpr(RNAseq)
-  RNAseq <- RNAseq[keep, , keep.lib.sizes = F]
-  RNAseq <- edgeR::calcNormFactors(RNAseq)
 
+  #create Possion heatmap
+  poisd <- PoissonDistance(t(RNAseq$counts))
+  samplePoisDistMatrix <- as.matrix( poisd$dd )
+  rownames(samplePoisDistMatrix) <- colnames(cpm(RNAseq))
+  colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+
+  heatmap <- pheatmap(samplePoisDistMatrix,  clustering_distance_rows=poisd$dd,clustering_distance_cols=poisd$dd, col=colors)
+  ggsave(heatmap, filename = here("data/figures/QCplots/Poisson_heatmap.png"),
+         width = 12,
+         height = 12,
+         units = "cm",
+         scale = 2.5)
   #crete mdsPlots
   mdsData <- plotMDS(RNAseq, ndim = 3, plot = FALSE)
   mdsData <-
@@ -204,7 +211,7 @@ Quality_control_plots <- function(count_matrix, setup) {
   setnames(mdsData,
            c("V1", "V2", "V3", "ID", "Group"),
            c("dim1", "dim2", "dim3", "ID", "Group"))
-plotMDS(RNAseq, ndim = 3)
+  plotMDS(RNAseq, ndim = 3)
   pBase <-
     ggplot(mdsData, aes(x = dim1, y = dim2, colour = Group)) +
     geom_point(size = 5) +
@@ -234,6 +241,13 @@ plotMDS(RNAseq, ndim = 3)
 
   #check mds
 
+  #calc norm factors
+  keep <- edgeR::filterByExpr(RNAseq)
+  RNAseq <- RNAseq[keep, , keep.lib.sizes = F]
+  RNAseq <- edgeR::calcNormFactors(RNAseq)
+
+
+
   #check MDplots and density after filtering
 
   pdf(file.path(here("data/figures/QCplots"), "afterFiltering_MD.pdf"), width = 4, height = 4)
@@ -259,17 +273,8 @@ plotMDS(RNAseq, ndim = 3)
     units = "cm",
     scale = 2.5
   )
-  #create Possion heatmap
-  poisd <- PoissonDistance(t(RNAseq$counts))
-  samplePoisDistMatrix <- as.matrix( poisd$dd )
-  rownames(samplePoisDistMatrix) <- colnames(cpm(RNAseq))
-  colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
 
-  heatmap <- pheatmap(samplePoisDistMatrix,  clustering_distance_rows=poisd$dd,clustering_distance_cols=poisd$dd, col=colors)
-  ggsave(heatmap, filename = here("data/figures/QCplots/Poisson_heatmap.png"),
-         width = 12,
-         height = 12,
-         units = "cm",
-         scale = 2.5)
   print("All your plots can be found in the Figures/QCplots folder")
 }
+
+

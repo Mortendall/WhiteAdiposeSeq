@@ -9,11 +9,11 @@ setup <- load_metadata("setup_data.xlsx")
 
 #S42 placebo A look like it is seperaring from the remaining groups. Consider removing it
 setup <- setup %>%
-  dplyr::filter(!ID == "S42")
+  dplyr::filter(!ID == "S42" & !ID =="S10")
 design <- Generate_design_matrix(setup)
 
 count_matrix <- count_matrix %>%
-  dplyr::select(-S42)
+  dplyr::select(-S10, -S42)
 
 #select what groups from design yuo wish to compare
 ctrsts <- makeContrasts(
@@ -25,6 +25,7 @@ ctrsts <- makeContrasts(
   levels = design)
 
 all(setup$ID == colnames(count_matrix))
+
 
 dgeResults <- RNAseq_processing(count_matrix, setup, design, ctrsts)
 write.xlsx(dgeResults, file = here("data/edgeR_afterQC.xlsx"), asTable = TRUE)
