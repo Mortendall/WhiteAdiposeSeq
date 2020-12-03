@@ -1,3 +1,5 @@
+#NB! Recently learned that the B samples are "Before" and "A" are after. Hence, this code should be modified to reflect this
+
 #load count matrix and setup data
 
 count_matrix <- count_matrix_assembly("Human_RNAseq_counts.xlsx")
