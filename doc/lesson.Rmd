@@ -224,6 +224,9 @@ PCA_plots <-
 "TENT5C",
 "MGAM"
 )
+  
+  
+  
   Selected_candidates <- as.data.table(Selected_candidates)
   setnames(Selected_candidates, "Selected_candidates", "Gene")
 
@@ -264,6 +267,344 @@ PCA_plots <-
 }
 
 
+
+```
+
+```{r}
+
+#' Load metadata and sort them according to count matrix input
+#'
+#' @param file_name the name of teh metadata file (default "metadata.csv")
+#'
+#' @return metadata file sorted according to count matrix order
+
+load_metadata <- function(file_name) {
+  data_file <- fs::dir_ls(here::here("data-raw/"),
+                          regexp = file_name,
+                          recurse = T)
+  metadata <- openxlsx::read.xlsx(xlsxFile = data_file)
+  return(metadata)
+}
+sample_info <- load_metadata("025_Metadata_Human_realign")
+sample_info <- sample_info %>% 
+  dplyr::filter(
+    !Sample_ID == "025_76" &
+      !Sample_ID == "025_77" &
+      !Sample_ID == "025_78" &
+      !Sample_ID == "025_96" &
+      !Sample_ID == "025_79" &
+      !Sample_ID == "025_80"
+  )
+
+
+
+ID_order <- setup_person$ID
+
+sample_info <- sample_info %>% 
+  dplyr::filter(Sample_ID %in% setup_person$Sample_ID)
+
+sample_info <- sample_info %>% 
+  dplyr::arrange(Sample_ID = factor(Sample_ID, levels = ID_order))
+
+all(sample_info$Sample.ID==colnames(count_matrix))
+
+sample_info <- left_join(sample_info, setup_person, by = "Sample_ID")
+
+
+test <- filterByExpr(count_matrix, design = design)
+count_matrix_test <- count_matrix[test, , keep.lib.sizes = F, keep.rownames = T]
+
+all(sample_info$Sample.ID==colnames(count_matrix_test))
+count_matrix_wo_batch <- removeBatchEffect(count_matrix_test, batch = sample_info$ID)
+
+plotMDS(count_matrix_wo_batch, labels = NULL,
+    dim.plot = c(1, 2),
+    pch = 16,
+    main = "MDS with batch correction",
+    col = as.numeric(as.factor(sample_info$Group))
+  )
+
+View(RNAseq_limma)
+
+boxplot(arrayWeights(RNAseq_limma)~RNAseq_limma$samples$group)
+  
+ library_pool <- plotMDS(
+    RNAseq,
+    labels = NULL,
+    dim.plot = c(1, 2),
+    pch = 16,
+    col = as.numeric(as.factor(sample_info$Library.Pool)),
+    main = "Library Pool"
+  )
+  
+sequencing_lane <-  plotMDS(RNAseq,
+    labels = NULL,
+    dim.plot = c(1, 2),
+    pch = 16,
+    col = as.numeric(as.factor(sample_info$Sequencing.Lane)),
+    main = "Sequencing Lane"
+  )
+  
+
+patient_ID <-  plotMDS(RNAseq,
+    labels = NULL,
+    dim.plot = c(1, 2),
+    pch = 16,
+    col = as.numeric(as.factor(sample_info$ID)),
+    main = "Patient ID"
+  )
+  #prøv removebatcheffect
+?removeBatchEffect
+
+  
+  pdf(file.path(here("data/figures/QCplots"), "MDSplots_after_filter.pdf"), width = 4, height = 4)
+  par(mfrow = c(1, 1))
+  plot(pBase)
+  plot(pBase2)
+  plot(pBase3)
+  plotMDS(RNAseq, ndim = 3)
+  par(mfrow = oldpar)
+  dev.off()
+
+```
+
+```{r}
+Candidates_for_sum <- Candidates_raw %>% 
+  mutate(Gene = rownames(Candidates_raw))
+
+raw_data_tidy <- pivot_longer(Candidates_for_sum, names_to = "ID",
+              values_to = "abundance",
+             cols= -Gene)
+View(raw_data_tidy)
+
+raw_data_plot <- inner_join(raw_data_tidy, setup)
+
+raw_data_plot <- as.data.frame(raw_data_plot)
+raw_data_plot <- raw_data_plot %>%
+  dplyr::select(-Group)
+
+summary_candidates_raw <- summarySE(raw_data_plot,
+                                measurevar = "abundance",
+                                groupvars = c("Gene", "Time", "Treatment"),
+                                na.rm = T) %>%
+  unite(Group, Time, Treatment, sep = "_", remove = F)
+
+
+ggplot(summary_candidates_raw,
+       aes(x = Group, 
+           y = abundance, 
+           fill = Group))+
+  geom_col()+
+  facet_wrap(~Gene)
+
+summary_candidates_raw$Group  <- factor(summary_candidates_raw$Group, levels = c("A_Placebo", "A_NR", "B_Placebo", "B_NR"))
+
+Flg2 <- 
+  ggplot(subset(summary_candidates_raw, Gene == "FLG2"), 
+       aes(x = Group, 
+           y = abundance))+
+  geom_col()+
+  ggtitle("FLG2")+
+  geom_errorbar(aes(ymin=abundance-se, 
+                    ymax = abundance+se), 
+                width = .1) 
+
+Selected_candidates <- c("ENSG00000169994",
+"ENSG00000064601",
+"ENSG00000072163",
+"ENSG00000198099",
+"ENSG00000178301",
+"ENSG00000175066",
+"ENSG00000160193",
+"ENSG00000183807",
+"ENSG00000241155",
+"ENSG00000197776",
+"ENSG00000120278",
+"ENSG00000114107",
+"ENSG00000168685",
+"ENSG00000185880",
+"ENSG00000136929")
+
+ Selected_candidates <- as.data.table(Selected_candidates)
+  setnames(Selected_candidates, "Selected_candidates", "Gene")
+  group <- setup_person$Group
+
+  y <- edgeR::DGEList(counts = count_matrix, group = group)
+  keep_y <- edgeR::filterByExpr(y, design = design)
+  y <- y[keep_y, , keep.lib.sizes = F]
+  y<-calcNormFactors(y)
+  count_matrix_cpm<- cpm(y, log = T)
+   
+  
+  Candidates_raw <- as.data.frame(count_matrix_cpm)%>%
+    dplyr::filter(rownames(count_matrix_cpm) %in% Selected_candidates$Gene) 
+  Candidates_raw <- Candidates_raw %>%   
+  mutate(Gene = rownames(Candidates_raw)) 
+  
+  Candidates_raw <- left_join(Candidates_raw, key, by=c("Gene" = "ENSEMBL"))%>% 
+    dplyr::select(-Gene)
+
+raw_data_tidy <- pivot_longer(Candidates_raw, names_to = "ID",
+              values_to = "countse",
+             cols= -SYMBOL)
+raw_data_plot <- left_join(raw_data_tidy, setup, by = c("ID" = "Sample_ID"))
+ 
+ 
+summary_candidates_raw <- summarySE(raw_data_plot,
+                                measurevar = "countse",
+                                groupvars = c("SYMBOL", "Group"),
+                                na.rm = T)
+
+
+
+plots <- ggplot(summary_candidates_raw,
+       aes(x = Group, 
+           y = countse, 
+           fill = Group))+
+  geom_col()+
+  facet_wrap(~SYMBOL)
+ 
+
+ggsave(plots,
+    filename = here("data/figures/top3_CPM_Limma genes.png"),
+    width = 12,
+    height = 12,
+    units = "cm"
+  )
+ 
+
+selected_genes_voom <- c("ENSG00000064601",
+"ENSG00000175066",
+"ENSG00000169994",
+"ENSG00000175066",
+"ENSG00000156587",
+"ENSG00000246695",
+"ENSG00000175155",
+"ENSG00000203326",
+"ENSG00000171843",
+"ENSG00000197776",
+"ENSG00000161091",
+"ENSG00000114107",
+"ENSG00000118689",
+"ENSG00000156587",
+"ENSG00000203326")
+Selected_candidates <- as.data.table(selected_genes_voom)
+setnames(Selected_candidates, "selected_genes_voom", "Gene")
+
+y <- edgeR::DGEList(counts = count_matrix, group = group)
+  keep_y <- edgeR::filterByExpr(y, design = design)
+  y <- y[keep_y, , keep.lib.sizes = F]
+  y<-calcNormFactors(y)
+  count_matrix_cpm<- cpm(y, log = T)
+
+Candidates_raw <- as.data.frame(count_matrix)%>%
+    dplyr::filter(rownames(count_matrix) %in% Selected_candidates$Gene) 
+  Candidates_raw <- Candidates_raw %>%   
+  mutate(Gene = rownames(Candidates_raw)) 
+  
+  Candidates_raw <- left_join(Candidates_raw, key, by=c("Gene" = "ENSEMBL"))%>% 
+    dplyr::select(-Gene)
+
+raw_data_tidy <- pivot_longer(Candidates_raw, names_to = "ID",
+              values_to = "countse",
+             cols= -SYMBOL)
+raw_data_plot <- left_join(raw_data_tidy, setup, by = c("ID" = "Sample_ID"))
+ 
+ library(Rmisc)
+summary_candidates_raw <- summarySE(raw_data_plot,
+                                measurevar = "countse",
+                                groupvars = c("SYMBOL", "Group"),
+                                na.rm = T)
+
+
+
+plots <- ggplot(summary_candidates_raw,
+       aes(x = Group, 
+           y = countse, 
+           fill = Group))+
+  geom_col()+
+  facet_wrap(~SYMBOL)
+```
+```{r}
+
+
+
+cameraFn <- function(contrast, index, y, design)
+{
+  out <- camera(y, index = index, design = design, contrast = contrast) %>%
+    data.table(keep.rownames = TRUE) %>% 
+    setnames("rn", "ID") %>%
+    extract(!is.na(PValue))
+  out[order(PValue)]
+}
+?camera
+
+#### Reactome
+rLst <- fread("https://reactome.org/download/current/Ensembl2Reactome.txt", header = FALSE)
+
+rLst <- rLst[V6 == "Homo sapiens"]
+reactomeName <- rLst[, .(ID = unique(V2), TERM = unique(V4))]
+
+reactomeList <- tapply(rLst$V1, rLst$V2, list)
+reactomeList <- Filter(. %>% length %>% is_greater_than(4), reactomeList) # Remove small categories
+reactomeList <- Filter(. %>% length %>% is_less_than(501), reactomeList) # Remove small categories
+
+y <- count_matrix_limma
+camera_test <- apply(ctrsts, 2, camera, index = reactomeList, y = y, design = design)
+camera_test <- lapply(camera_test, data.table, keep.rownames = T) 
+camera_test <- lapply(camera_test, setnames, old = "rn", new = "ID")
+camera_test <- lapply(camera_test, extract, !is.na(PValue))
+camera_test <- lapply(camera_test, extract, reactomeName, on = "ID", nomatch = FALSE)
+camera_test <- lapply(camera_test, extract, order(PValue, decreasing = FALSE)) 
+
+#### Convert from ENSEMBL to ENTREZID
+conv <- bitr(rownames(y$counts), fromType='ENSEMBL', toType='ENTREZID', OrgDb = "org.Hs.eg.db") %>%
+  data.table(key = "ENSEMBL")
+rownames(y) <- conv[rownames(y), ENTREZID, mult = "first"]
+
+
+#### Gene Ontology (only BP)
+keysGO <- keys(GO.db)
+termGO <- select(GO.db, keys=keysGO, columns=c("TERM", "ONTOLOGY")) %>% data.table
+termGO <- termGO[ONTOLOGY == "BP"]
+termGO[, ONTOLOGY:=NULL]
+setnames(termGO, "GOID", "ID")
+
+cyt.go.genes <- as.list(org.Mm.egGO2ALLEGS)
+cyt.go.genes <- cyt.go.genes[names(cyt.go.genes) %in% termGO$ID]
+cyt.go.genes <- Filter(. %>% length %>% is_greater_than(4), cyt.go.genes) # Remove small categories
+cyt.go.genes <- Filter(. %>% length %>% is_less_than(501), cyt.go.genes) # Remove large categories
+
+cameraGO <- apply(ctrsts, 2, cameraFn, index = cyt.go.genes, y = y, design = design)
+cameraGO <- lapply(cameraGO, extract, termGO, on = "ID", nomatch = FALSE)
+cameraGO <- lapply(cameraGO, extract, order(PValue, decreasing = FALSE)) 
+
+write.xlsx(cameraGO, "edgeR_results/022_JonasTreebak_Anna_cameraGO.xlsx", asTable = TRUE)
+write.xlsx(cameraReactome, "edgeR_results/022_JonasTreebak_Anna_cameraReactome.xlsx", asTable = TRUE)
+
+# Mon Jun 11 12:34:03 2018 ------------------------------
+# Extract genes related to interesting GO terms
+annotateWithGenes <- function(tests, termList, fromType){
+  conv <- bitr(unique(unlist(termList)), fromType = fromType, toType = 'SYMBOL', OrgDb = "org.Mm.eg.db") %>%
+    data.table(key = fromType)
+  pasteSymbols <- function(x) conv[termList[[x]], paste0(SYMBOL, collapse = ", ")]
+  termSymbols <- lapply(names(termList), pasteSymbols) %>% data.table
+  termSymbols[, id:=names(termList)]
+  setnames(termSymbols, c("symbolList", "id"))
+  setkey(termSymbols, id)
+  
+  tests <- lapply(tests, copy)
+  for (i in names(tests)){
+    tests[[i]][, genesInTerm:=termSymbols[ID, symbolList]]
+  }
+  tests
+}
+
+cameraGoAnnotated <- annotateWithGenes(cameraGO, cyt.go.genes, fromType = 'ENTREZID')
+cameraReactomeAnnotated <- annotateWithGenes(cameraReactome, reactomeList, fromType = "ENSEMBL")
+
+write.xlsx(cameraGoAnnotated, "edgeR_results/022_JonasTreebak_Anna_cameraGO_geneLists.xlsx", asTable = TRUE)
+write.xlsx(cameraReactomeAnnotated, "edgeR_results/022_JonasTreebak_Anna_cameraReactome_geneLists.xlsx", asTable = TRUE)
 
 ```
 

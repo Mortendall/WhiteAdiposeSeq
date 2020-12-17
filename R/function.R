@@ -18,6 +18,7 @@ library(pheatmap)
 library(gridExtra)
 library(PoiClaClu)
 library(RColorBrewer)
+library(limma)
 
 #' count_matrix_loader
 #'
@@ -94,11 +95,28 @@ load_metadata_realign <- function(file_name) {
 
 
 Generate_design_matrix <- function(metadata){
-  design <- stats::model.matrix( ~0+Group, setup)
+  design <- stats::model.matrix( ~0+Group, metadata)
     colnames(design) <-
     stringr::str_remove_all(colnames(design), "\\(|\\)|Group|:")
   return(design)
 }
+
+#' Generate design matrix with patient data
+#'
+#' @param metadata a metadata object generated through the load_metadata function
+#'
+#' @return a design matrix file
+
+
+Generate_design_matrix_with_patient <- function(metadata){
+  design <- stats::model.matrix( ~0+Group+ID, setup_person)
+  colnames(design) <-
+    stringr::str_remove_all(colnames(design), "\\(|\\)|Group|:")
+  colnames(design) <-
+    stringr::str_remove_all(colnames(design), "\\(|\\)|ID|:")
+  return(design)
+}
+
 
 #' RNAseq_processing
 #'
@@ -112,7 +130,7 @@ Generate_design_matrix <- function(metadata){
 RNAseq_processing <- function(count_matrix, metadata, design, ctrsts) {
   group <- as.matrix(metadata[4])
   RNAseq <- edgeR::DGEList(counts = count_matrix, group = group)
-  keep <- edgeR::filterByExpr(RNAseq, design = design, min.count = 20)
+  keep <- edgeR::filterByExpr(RNAseq, design = design)
   RNAseq <- RNAseq[keep, , keep.lib.sizes = F]
   RNAseq <- edgeR::calcNormFactors(RNAseq)
   RNAseq <- edgeR::estimateDisp(RNAseq,design)
@@ -124,6 +142,8 @@ RNAseq_processing <- function(count_matrix, metadata, design, ctrsts) {
                         data.table::as.data.table(keep.rownames = TRUE))
   return(dgeResults)
 }
+
+
 
 
 goAnalysis <- function(result_list){
