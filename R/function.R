@@ -19,6 +19,7 @@ library(gridExtra)
 library(PoiClaClu)
 library(RColorBrewer)
 library(limma)
+library(GO.db)
 
 #' count_matrix_loader
 #'
@@ -141,44 +142,6 @@ RNAseq_processing <- function(count_matrix, metadata, design, ctrsts) {
                         magrittr::extract2("table") %>%
                         data.table::as.data.table(keep.rownames = TRUE))
   return(dgeResults)
-}
-
-
-
-
-goAnalysis <- function(result_list){
-  bg <- result_list[[1]]
-  bg_list <- clusterProfiler::bitr(
-    bg$rn,
-    fromType = "SYMBOL",
-    toType = "ENTREZID",
-    OrgDb = "org.Hs.eg.db",
-    drop = T
-  )
-
-  goResult_list <- vector(mode = "list", length = length(result_list))
-  for(i in 1:length(result_list)){
-    sig_list<- result_list[[i]] %>%
-      dplyr::filter(FDR<0.05)
-
-    eg <- clusterProfiler::bitr(
-      sig_list$rn,
-      fromType = "SYMBOL",
-      toType = "ENTREZID",
-      OrgDb = "org.Hs.eg.db",
-      drop = T
-    )
-    goResults <- clusterProfiler::enrichGO(gene = eg$ENTREZID,
-                                           universe = bg_list$ENTREZID,
-                                           OrgDb = org.Hs.eg.db,
-                                           ont = "BP")
-    goResult_list[[i]]<- goResults
-  }
-  for (i in 1:length(goResult_list)){
-    names(goResult_list)[i]<-names(result_list)[i]
-  }
-  return(goResult_list)
-
 }
 
 #' File exporter - exports GOresults as an excel sheet, and prints dotplot and cnet plots
@@ -394,7 +357,3 @@ RNAseq_processing <- function(count_matrix, metadata, design, ctrsts) {
                         data.table::as.data.table(keep.rownames = TRUE))
   return(dgeResults)
 }
-
-
-
-
