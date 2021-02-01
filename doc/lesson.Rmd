@@ -721,18 +721,32 @@ cpm_subset <- as.data.frame(cpm_matrix)
 cpm_subset <- cpm_subset %>% 
   dplyr::filter(rownames(cpm_subset) %in% candidates)
 
+
+
 cpm_subset_long <- cpm_subset %>% 
-  dplyr::mutate(Gene = rownames(cpm_subset)) %>% 
+  dplyr::mutate(Gene = rownames(cpm_subset))%>% 
   pivot_longer(cols = -Gene, names_to = "Participant", values_to = "CPM")
+
+cpm_subset_long <- left_join(cpm_subset_long, key, by=c("Gene" = "ENSEMBL")) %>% 
+  dplyr::select(-Gene)
 
 cpm_subset_long <-   left_join(cpm_subset_long, setup_person, by = c("Participant"="Sample_ID"))
 
-ggplot(cpm_subset_long,
-       aes(x = Group, 
-           y = countse, 
-           fill = Group))+
-  geom_col()+
+Gene_CPM <- ggplot(subset(cpm_subset_long, Condition2=="PR"),
+       aes(x = Condition1, 
+           y = CPM, 
+           color = ID))+
+  geom_point()+
+  geom_line(aes(group = ID))+
   facet_wrap(~SYMBOL)
 
+
+Gene_CPM_CR <- ggplot(subset(cpm_subset_long, Condition2=="CR"),
+       aes(x = Condition1, 
+           y = CPM, 
+           color = ID))+
+  geom_point()+
+  geom_line(aes(group = ID))+
+  facet_wrap(~SYMBOL)
 ```
 
