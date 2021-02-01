@@ -138,6 +138,7 @@ ID_key_file <- fs::dir_ls(here::here("data-raw/"),
 ID_key <- openxlsx::read.xlsx(xlsxFile = ID_key_file) %>%
   dplyr::select(-Sample)
 
+
 setup_person <- left_join(setup, ID_key, by = c("Sample_ID" = "ID"))
 
 #Quality_control_plots(count_matrix, setup)
@@ -158,20 +159,13 @@ setup_person <- setup_person %>%
 
 colnames(setup_person)[5]<-"ID"
 
-design <- Generate_design_matrix_with_patient(setup_person)
+#design <- Generate_design_matrix_with_patient(setup_person)
 
 count_matrix <- count_matrix %>%
   dplyr::select(-"025_76", -"025_77", -"025_78", -"025_96", -"025_79", -"025_80")
 all(colnames(count_matrix)==setup_person$Sample_ID)
 
-#select what groups from design yuo wish to compare
-ctrsts <- makeContrasts(
-  TimeBComp = CR_B - PR_B,
-  PR_effect = PR_A - PR_B,
-  CR_effect = CR_A - CR_B,
-  PR_A_vs_CR_A = PR_A - CR_A,
-  Interaction = (PR_A - PR_B) - (CR_A-CR_B),
-  levels = design)
+
 
 rownames(count_matrix) <- rownames(count_matrix_raw)
 
@@ -188,21 +182,25 @@ all(colnames(count_matrix)==setup_person$Sample_ID)
 clinical_data <- read.xlsx(here::here("data-raw/collected_clinical_data_trimmed.xlsx"))
 
 roworder <- colnames(count_matrix)
+
 #modified data to de-seelct T2DM
 clinical_data<- clinical_data %>%
   dplyr::mutate(Sample.ID = factor(Sample.ID, levels = roworder)) %>%
   dplyr::select(-T2DM.diagnostic, -Age)
+
 clinical_data <- clinical_data[match(roworder, clinical_data$Sample.ID),]
 
 clinical_matrix <- clinical_data %>%
   dplyr::select(-Sample.ID, -Gender)
 
 rownames(clinical_matrix)<-clinical_data$Sample.ID
+
 clinical_matrix<- as.matrix(clinical_matrix)
 
 
 
 sample_info <- load_metadata("025_Metadata_Human_realign")
+
 sample_info <- sample_info %>%
   dplyr::filter(
     !Sample_ID == "025_76" &
@@ -224,7 +222,7 @@ sample_info <- left_join(sample_info, setup_person, by = "Sample_ID")
 
 
 
-
+rownames(count_matrix) <- rownames(count_matrix_raw)
 y <- DGEList(counts = count_matrix,group = sample_info$Group)
 test <- filterByExpr(y, design = design)
 y<-y[test, , keep.lib.sizes = F]
@@ -246,9 +244,9 @@ colnames(design) <-
 
 colnames(design) <-
   stringr::str_remove_all(colnames(design), "\\(|\\)|Gender|:")
-y <- edgeR::estimateDisp(y,design)
+#y <- edgeR::estimateDisp(y,design)
 
-efit <- edgeR::glmQLFit(y, design)
+#efit <- edgeR::glmQLFit(y, design)
 ctrsts <- makeContrasts(
   TimeBComp = CR_B - PR_B,
   PR_effect = PR_A - PR_B,
@@ -256,11 +254,11 @@ ctrsts <- makeContrasts(
   PR_A_vs_CR_A = PR_A - CR_A,
   Interaction = (PR_A - PR_B) - (CR_A-CR_B),
   levels = design)
-dgeResults <- apply(ctrsts, 2, . %>%
-                      edgeR::glmQLFTest(glmfit = efit, contrast = .) %>%
-                      edgeR::topTags(n = Inf, p.value = 1) %>%
-                      magrittr::extract2("table") %>%
-                      data.table::as.data.table(keep.rownames = TRUE))
+#dgeResults <- apply(ctrsts, 2, . %>%
+                      # edgeR::glmQLFTest(glmfit = efit, contrast = .) %>%
+                      # edgeR::topTags(n = Inf, p.value = 1) %>%
+                      # magrittr::extract2("table") %>%
+                      # data.table::as.data.table(keep.rownames = TRUE))
 #this gives more or less the same result. Try with voom instead
 
 
@@ -296,13 +294,14 @@ resultTable <- list(TimeBComp = topTable(fit2, coef = "TimeBComp", number = Inf,
 resultTable_export <- resultTable
 
 
+
 for (i in 1:length(resultTable_export)){
   key <- bitr(resultTable_export[[i]]$rn, fromType='ENSEMBL', toType='SYMBOL', OrgDb = "org.Hs.eg.db", drop = F)
   resultTable_export[[i]] <- left_join(resultTable_export[[i]], key, by = c("rn"="ENSEMBL"), keep = F)
 }
 
 limma::plotMA(fit2)
-write.xlsx(resultTable_export, file = here::here("data/edgeR_PR_CR_201812.xlsx"), asTable = TRUE)
+#write.xlsx(resultTable_export, file = here::here("data/edgeR_PR_CR_201812.xlsx"), asTable = TRUE)
 
 
 #####QC to investigate effect of Gender#####
@@ -453,6 +452,7 @@ reactomeName <- rLst[, .(ID = unique(V2), TERM = unique(V4))]
 
 reactomeList <- tapply(rLst$V1, rLst$V2, list)
 reactomeList <- Filter(. %>% length %>% is_greater_than(4), reactomeList) # Remove small categories
+
 reactomeList <- Filter(. %>% length %>% is_less_than(501), reactomeList) # Remove small categories
 
 camera_test <- apply(ctrsts, 2, camera, index = reactomeList, y = count_matrix_limma, design = design)
