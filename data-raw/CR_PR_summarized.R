@@ -1,118 +1,126 @@
 #####modelling for info on participants#####
 
-count_matrix_raw <- count_matrix_assembly_realign("realign_counts")
+  count_matrix_raw <- count_matrix_assembly_realign("realign_counts")
 
-setup_raw <- load_metadata_realign("025_Metadata_Human_realign")
+  setup_raw <- load_metadata_realign("025_Metadata_Human_realign")
 
-setup <- setup_raw %>%
-  dplyr::filter(Condition2 == "Calorie restriction" | Condition2 == "Protein restriction")
+  setup <- setup_raw %>%
+    dplyr::filter(Condition2 == "Calorie restriction" | Condition2 == "Protein restriction")
 
-count_matrix <- count_matrix_raw %>%
-  dplyr::select(setup$Sample_ID)
-
-
-all(setup$Sample_ID==colnames(count_matrix))
-
-setup <- setup %>%
-  dplyr::mutate(Condition1 = case_when(Condition1 == "1 - Before" ~ "B",
-                                       Condition1 == "2 - After" ~ "A"),
-                Condition2 = case_when(Condition2 == "Calorie restriction"  ~ "CR",
-                                       Condition2 == "Protein restriction" ~ "PR"))
-setup <- setup %>%
-  dplyr::mutate(Group = paste(Condition2, Condition1, sep = "_"))
-
-ID_key_file <- fs::dir_ls(here::here("data-raw/"),
-                          regexp = "ID_Person",recurse = T)
-ID_key <- openxlsx::read.xlsx(xlsxFile = ID_key_file) %>%
-  dplyr::select(-Sample)
+  count_matrix <- count_matrix_raw %>%
+    dplyr::select(setup$Sample_ID)
 
 
-setup_person <- left_join(setup, ID_key, by = c("Sample_ID" = "ID"))
+  all(setup$Sample_ID==colnames(count_matrix))
 
-#Quality_control_plots(count_matrix, setup)
+  setup <- setup %>%
+    dplyr::mutate(Condition1 = case_when(Condition1 == "1 - Before" ~ "B",
+                                         Condition1 == "2 - After" ~ "A"),
+                  Condition2 = case_when(Condition2 == "Calorie restriction"  ~ "CR",
+                                         Condition2 == "Protein restriction" ~ "PR"))
+  setup <- setup %>%
+    dplyr::mutate(Group = paste(Condition2, Condition1, sep = "_"))
 
-#QC shows sample 76, 77, 78 and 96 looks strange. These are the same samples that we previously found to look odd(PR1 and CR5L, CR10L)
-#Further talks suggest that 79 and 80 could be excluded as well
+  ID_key_file <- fs::dir_ls(here::here("data-raw/"),
+                            regexp = "ID_Person",recurse = T)
+  ID_key <- openxlsx::read.xlsx(xlsxFile = ID_key_file) %>%
+    dplyr::select(-Sample)
+
+
+  setup_person <- left_join(setup, ID_key, by = c("Sample_ID" = "ID"))
+
+  #Quality_control_plots(count_matrix, setup)
+
+  #QC shows sample 76, 77, 78 and 96 looks strange. These are the same samples that we previously found to look odd(PR1 and CR5L, CR10L)
+  #Further talks suggest that 79 and 80 could be excluded as well
+
+  setup_person <- setup_person %>%
+    dplyr::filter(
+      !Sample_ID == "025_76" &
+        !Sample_ID == "025_77" &
+        !Sample_ID == "025_78" &
+        !Sample_ID == "025_96" &
+        !Sample_ID == "025_79" &
+        !Sample_ID == "025_80"
+    )
+
+
+  colnames(setup_person)[5]<-"ID"
+
+  #design <- Generate_design_matrix_with_patient(setup_person)
+
+  count_matrix <- count_matrix %>%
+    dplyr::select(-"025_76", -"025_77", -"025_78", -"025_96", -"025_79", -"025_80")
+  all(colnames(count_matrix)==setup_person$Sample_ID)
+
+
+
+  rownames(count_matrix) <- rownames(count_matrix_raw)
+
+  #Quality_control_plots(count_matrix, setup)
+
+  all(colnames(count_matrix)==setup_person$Sample_ID)
+
+
+  #Attempt to analyze data with voom with qualityweights + duplicateCorrelation as pr https://support.bioconductor.org/p/59700/
+
+  #####Clinical data for PR/CR experiment#####
+  clinical_data <- read.xlsx(here::here("data-raw/collected_clinical_data_trimmed.xlsx"))
+
+  roworder <- colnames(count_matrix)
+
+  #modified data to de-seelct T2DM
+  clinical_data<- clinical_data %>%
+    dplyr::mutate(Sample.ID = factor(Sample.ID, levels = roworder)) %>%
+    dplyr::select(-T2DM.diagnostic, -Age)
+
+  clinical_data <- clinical_data[match(roworder, clinical_data$Sample.ID),]
+
+  clinical_matrix <- clinical_data %>%
+    dplyr::select(-Sample.ID, -Gender)
+
+  rownames(clinical_matrix)<-clinical_data$Sample.ID
+
+  clinical_matrix<- as.matrix(clinical_matrix)
+
+
+
+  sample_info <- load_metadata("025_Metadata_Human_realign")
+
+  sample_info <- sample_info %>%
+    dplyr::filter(
+      !Sample_ID == "025_76" &
+        !Sample_ID == "025_77" &
+        !Sample_ID == "025_78" &
+        !Sample_ID == "025_96" &
+        !Sample_ID == "025_79" &
+        !Sample_ID == "025_80"
+    )
+
+
+
+  sample_info <- sample_info %>%
+    dplyr::filter(Sample_ID %in% setup_person$Sample_ID)
+
+
+  sample_info <- left_join(sample_info, setup_person, by = "Sample_ID")
 
 setup_person <- setup_person %>%
-  dplyr::filter(
-    !Sample_ID == "025_76" &
-      !Sample_ID == "025_77" &
-      !Sample_ID == "025_78" &
-      !Sample_ID == "025_96" &
-      !Sample_ID == "025_79" &
-      !Sample_ID == "025_80"
-  )
+  dplyr::mutate(Gender = clinical_data$Gender)
+design <- stats::model.matrix( ~0+Group+Gender, setup_person)
+colnames(design) <-
+  stringr::str_remove_all(colnames(design), "\\(|\\)|Group|:")
+
+colnames(design) <-
+  stringr::str_remove_all(colnames(design), "\\(|\\)|Gender|:")
 
 
-colnames(setup_person)[5]<-"ID"
+  rownames(count_matrix) <- rownames(count_matrix_raw)
+  y <- DGEList(counts = count_matrix,group = sample_info$Group)
 
-#design <- Generate_design_matrix_with_patient(setup_person)
+  test <- filterByExpr(y, design = design)
+  y<-y[test, , keep.lib.sizes = F]
 
-count_matrix <- count_matrix %>%
-  dplyr::select(-"025_76", -"025_77", -"025_78", -"025_96", -"025_79", -"025_80")
-all(colnames(count_matrix)==setup_person$Sample_ID)
-
-
-
-rownames(count_matrix) <- rownames(count_matrix_raw)
-
-#Quality_control_plots(count_matrix, setup)
-
-all(colnames(count_matrix)==setup_person$Sample_ID)
-
-
-#Attempt to analyze data with voom with qualityweights + duplicateCorrelation as pr https://support.bioconductor.org/p/59700/
-
-#####Clinical data for PR/CR experiment#####
-clinical_data <- read.xlsx(here::here("data-raw/collected_clinical_data_trimmed.xlsx"))
-
-roworder <- colnames(count_matrix)
-
-#modified data to de-seelct T2DM
-clinical_data<- clinical_data %>%
-  dplyr::mutate(Sample.ID = factor(Sample.ID, levels = roworder)) %>%
-  dplyr::select(-T2DM.diagnostic, -Age)
-
-clinical_data <- clinical_data[match(roworder, clinical_data$Sample.ID),]
-
-clinical_matrix <- clinical_data %>%
-  dplyr::select(-Sample.ID, -Gender)
-
-rownames(clinical_matrix)<-clinical_data$Sample.ID
-
-clinical_matrix<- as.matrix(clinical_matrix)
-
-
-
-sample_info <- load_metadata("025_Metadata_Human_realign")
-
-sample_info <- sample_info %>%
-  dplyr::filter(
-    !Sample_ID == "025_76" &
-      !Sample_ID == "025_77" &
-      !Sample_ID == "025_78" &
-      !Sample_ID == "025_96" &
-      !Sample_ID == "025_79" &
-      !Sample_ID == "025_80"
-  )
-
-
-
-sample_info <- sample_info %>%
-  dplyr::filter(Sample_ID %in% setup_person$Sample_ID)
-
-
-sample_info <- left_join(sample_info, setup_person, by = "Sample_ID")
-
-
-
-
-rownames(count_matrix) <- rownames(count_matrix_raw)
-y <- DGEList(counts = count_matrix,group = sample_info$Group)
-test <- filterByExpr(y, design = design)
-y<-y[test, , keep.lib.sizes = F]
-cpm_matrix <- cpm(y, log = T)
 count_matrix_test <- y$counts
 
 
@@ -122,14 +130,8 @@ all(colnames(count_matrix_test)==rownames(clinical_matrix))
 
 group <- as.matrix(setup_person[4])
 y <- edgeR::calcNormFactors(y)
-setup_person <- setup_person %>%
-  dplyr::mutate(Gender = clinical_data$Gender)
-design <- stats::model.matrix( ~0+Group+Gender, setup_person)
-colnames(design) <-
-  stringr::str_remove_all(colnames(design), "\\(|\\)|Group|:")
+cpm_matrix <- cpm(y, log = T)
 
-colnames(design) <-
-  stringr::str_remove_all(colnames(design), "\\(|\\)|Gender|:")
 #y <- edgeR::estimateDisp(y,design)
 
 #efit <- edgeR::glmQLFit(y, design)
