@@ -190,7 +190,7 @@ for (i in 1:length(resultTable_export)){
 }
 
 
-#write.xlsx(resultTable_export, file = here::here("data/edgeR_PR_CR_201812.xlsx"), asTable = TRUE)
+#write.xlsx(resultTable_export, file = here::here("data/edgeR_PR_CR_201812_sort.xlsx"), asTable = TRUE)
 
 #####Data analysis with reactome####
 #rLst <- fread("https://reactome.org/download/current/Ensembl2Reactome.txt", header = FALSE)
@@ -266,3 +266,127 @@ cameraReactomeAnnotated <- annotateWithGenes(camera_test, reactomeList, fromType
 
 # write.xlsx(cameraReactomeAnnotated, here::here("data/210201Reactome_data_annotated.xlsx"), asTable = TRUE)
 # write.xlsx(cameraGoAnnotated , here::here("data/210201GO_data_annotated.xlsx"), asTable = TRUE)
+
+#####prepare volcano plots with FDR threshold####
+#PR volcano plot
+resultTable_export <- list(TimeBComp = NA,
+                           PR_effect = NA,
+                           CR_effect = NA,
+                           PR_A_vs_CR_A = NA,
+                           Interaction = NA)
+for (i in 1:length(resultTable_export)){
+  resultTable_export[[i]]<-openxlsx::read.xlsx(here::here("data/edgeR_PR_CR_201812_sort.xlsx"),sheet = i)
+}
+
+PR_volc <- ggplot2::ggplot(resultTable_export[[2]], aes(x = logFC, y = -log10(P.Value)))+
+  ggplot2::geom_point()+
+  ggplot2::ggtitle("Protein restriction treatment")+
+  ggplot2::theme(plot.title = element_text(hjust = 0.5,
+                                           size = 14))+
+  ggplot2::geom_text(aes(y = 5.8, label = "FDR Threshold", x = 0))+
+  ggplot2::geom_hline(yintercept =  5.560481, linetype = "dashed")+
+  ggplot2::xlim(c(-2.5,2.5))+
+  ggplot2::ylim(0,6.5)
+
+
+CR_volc <- ggplot2::ggplot(resultTable_export[[3]], aes(x = logFC, y = -log10(P.Value)))+
+  ggplot2::geom_point()+
+  ggplot2::ggtitle("Caloric restriction treatment")+
+  ggplot2::theme(plot.title = element_text(hjust = 0.5,
+                                           size = 14))+
+  ggplot2::geom_text(aes(y = 5.8, label = "FDR Threshold", x = 0))+
+  ggplot2::geom_hline(yintercept =  5.560481, linetype = "dashed")+
+  ggplot2::xlim(c(-2.5,2.5))+
+  ggplot2::ylim(0,6.5)
+
+
+tiff(here::here("data/figures_PR_CR/Volcanotplots.tif"), res = 300, height = 10, width = 15, units = "cm")
+PR_volc+CR_volc
+dev.off()
+
+#####Create heatmaps#####
+
+#To run this code, first run the data processing in the top of the script.
+
+all(colnames(cpm_matrix)==setup_person$Sample_ID)
+#create heatmap for PR
+setup_person_heatmap_PR <- setup_person %>%
+  dplyr::filter(Group == "PR_A"|Group == "PR_B") %>%
+  dplyr::arrange(ID)
+
+cpm_matrix_PR <- as.data.frame(cpm_matrix) %>%
+  dplyr::select(setup_person_heatmap_PR$Sample_ID)
+all(colnames(cpm_matrix_PR)==setup_person_heatmap_PR$Sample_ID)
+colnames()
+PR_key <- setup_person_heatmap_PR
+rownames(PR_key) <- PR_key$Sample_ID
+PR_key$ID <- stringr::str_remove_all(PR_key$ID, "Person_")
+PR_key <- PR_key %>%   dplyr::select(Condition1, ID)
+PR_key$Condition1<-factor(PR_key$Condition1, c("B","A"))
+cpm_matrix_PR<-as.matrix(cpm_matrix_PR)
+
+PR_hm <- pheatmap::pheatmap(cpm_matrix_PR,
+                            treeheight_col = 0,
+                            treeheight_row = 0,
+                            scale = "row",
+                            legend = T,
+                            na_col = "white",
+                            Colv = NA,
+                            na.rm = T,
+                            cluster_cols = F,
+                            cluster_rows = F,
+                            fontsize_row = 8,
+                            fontsize_col = 14,
+                            cellwidth = 16,
+                            cellheight = 0.025,
+                            annotation_col = PR_key,
+                            show_rownames = F,
+                            show_colnames = F,
+                            main = "Protein Restriction"
+                            )
+#make the plot for CR
+setup_person_heatmap_CR <- setup_person %>%
+  dplyr::filter(Group == "CR_A"|Group == "CR_B") %>%
+  dplyr::arrange(ID)
+
+cpm_matrix_CR <- as.data.frame(cpm_matrix) %>%
+  dplyr::select(setup_person_heatmap_CR$Sample_ID)
+all(colnames(cpm_matrix_CR)==setup_person_heatmap_CR$Sample_ID)
+colnames()
+CR_key <- setup_person_heatmap_CR
+rownames(CR_key) <- CR_key$Sample_ID
+#correct typo in CR_key
+CR_key$ID <- case_when(CR_key$ID == "Percon_8C"~"Person_8C",
+                       TRUE ~ as.character(CR_key$ID))
+CR_key$ID <- stringr::str_remove_all(CR_key$ID, "Person_")
+CR_key <- CR_key %>%   dplyr::select(Condition1, ID)
+CR_key$Condition1<-factor(CR_key$Condition1, c("B","A"))
+cpm_matrix_CR<-as.matrix(cpm_matrix_CR)
+
+CR_hm <- pheatmap::pheatmap(cpm_matrix_CR,
+                            treeheight_col = 0,
+                            treeheight_row = 0,
+                            scale = "row",
+                            legend = T,
+                            na_col = "white",
+                            Colv = NA,
+                            na.rm = T,
+                            cluster_cols = F,
+                            cluster_rows = F,
+                            fontsize_row = 8,
+                            fontsize_col = 14,
+                            cellwidth = 16,
+                            cellheight = 0.025,
+                            annotation_col = CR_key,
+                            show_rownames = F,
+                            show_colnames = F,
+                            main = "Caloric Restriction"
+)
+PR_hm <- ggplotify::as.ggplot(PR_hm)
+CR_hm <- ggplotify::as.ggplot(CR_hm)
+
+
+
+tiff(here::here("data/figures_PR_CR/Heatmaps.tif"), width = 30, height = 30, res = 200, units = "cm", )
+PR_hm+CR_hm
+dev.off()

@@ -4,9 +4,6 @@ library(Biobase)
 library(here)
 library(GEOquery)
 library(tidyverse)
-library(fs)
-library(vroom)
-library(Biobase)
 library(here)
 library(magrittr)
 library(data.table)
@@ -357,3 +354,5 @@ RNAseq_processing <- function(count_matrix, metadata, design, ctrsts) {
                         data.table::as.data.table(keep.rownames = TRUE))
   return(dgeResults)
 }
+
+
