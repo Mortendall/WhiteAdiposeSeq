@@ -151,7 +151,7 @@ ctrsts <- makeContrasts(
 
 
 count_matrix_limma <-
-  voomWithQualityWeights(y$counts, design = design, plot = F)
+  voomWithQualityWeights(y$counts, design = design, plot = T)
 corfit <-
   duplicateCorrelation(count_matrix_limma, design, block = setup_person$ID)
 count_matrix_limma <-
@@ -277,30 +277,109 @@ resultTable_export <- list(TimeBComp = NA,
 for (i in 1:length(resultTable_export)){
   resultTable_export[[i]]<-openxlsx::read.xlsx(here::here("data/edgeR_PR_CR_201812_sort.xlsx"),sheet = i)
 }
-
-PR_volc <- ggplot2::ggplot(resultTable_export[[2]], aes(x = logFC, y = -log10(P.Value)))+
-  ggplot2::geom_point()+
+resultTable_export[[2]]<-resultTable_export[[2]] %>%
+  dplyr::mutate(sig_group = case_when(
+    logFC>1 & -log10(P.Value)>1.30 ~"High",
+    logFC< -1 & -log10(P.Value)>1.30 ~"Low",
+    -log10(P.Value)<1.30 ~"nonSig",
+    TRUE ~"Mid"
+  ),
+  SYMBOL = case_when(
+    is.na(SYMBOL)~rn,
+    TRUE ~SYMBOL
+  ))
+colors <- c("High"= "Blue", "Low" = "red", "Mid" = "brown", "nonSig"="Grey")
+PR_volc <- ggplot2::ggplot(resultTable_export[[2]], aes(x = logFC, y = -log10(P.Value), color = sig_group))+
+  ggplot2::geom_point(size = 1)+
   ggplot2::ggtitle("Protein restriction treatment")+
   ggplot2::theme(plot.title = element_text(hjust = 0.5,
-                                           size = 14))+
-  ggplot2::geom_text(aes(y = 5.8, label = "FDR Threshold", x = 0))+
+                                           size = 14),
+                 legend.position = "none"
+                 )+
+  ggplot2::geom_text(aes(y = 5.8, label = "FDR Threshold", x = 0.5), color = "black")+
   ggplot2::geom_hline(yintercept =  5.560481, linetype = "dashed")+
   ggplot2::xlim(c(-2.5,2.5))+
-  ggplot2::ylim(0,6.5)
+  ggplot2::ylim(0,6.5)+
+  ggplot2::scale_color_manual(values =  colors)+
+  ggrepel::geom_text_repel(
+    data = subset(resultTable_export[[2]], logFC < -1.8 &
+                    -log10(P.Value) > 1.3),
+    aes(logFC,-log10(P.Value), label = SYMBOL),
+    color = "black",
+    fontface = "bold",
+    max.overlaps = 20,
+    arrow = arrow(length = unit(0.02, "npc")),
+    box.padding = 1
+  )+
+  ggrepel::geom_text_repel(
+    data = subset(resultTable_export[[2]], logFC > 1.8 &
+                    -log10(P.Value) > 1.3),
+    aes(logFC,-log10(P.Value), label = SYMBOL),
+    color = "black",
+    fontface = "bold",
+    max.overlaps = 20,
+    arrow = arrow(length = unit(0.02, "npc")),
+    box.padding = 1
+  )+
+  ggrepel::geom_text_repel(
+    data = subset(resultTable_export[[2]],
+                    -log10(P.Value) > 6),
+    aes(logFC,-log10(P.Value), label = SYMBOL),
+    color = "black",
+    fontface = "bold"
+  )
+
+resultTable_export[[3]]<-resultTable_export[[3]] %>%
+  dplyr::mutate(sig_group = case_when(
+    logFC>1 & -log10(P.Value)>1.30 ~"High",
+    logFC< -1 & -log10(P.Value)>1.30 ~"Low",
+    -log10(P.Value)<1.30 ~"nonSig",
+    TRUE ~"Mid"
+  ),
+  SYMBOL = case_when(
+    is.na(SYMBOL)~rn,
+    TRUE ~SYMBOL
+  )
+  )
 
 
-CR_volc <- ggplot2::ggplot(resultTable_export[[3]], aes(x = logFC, y = -log10(P.Value)))+
-  ggplot2::geom_point()+
+CR_volc <- ggplot2::ggplot(resultTable_export[[3]], aes(x = logFC, y = -log10(P.Value), color = sig_group))+
+  ggplot2::geom_point(size = 1)+
   ggplot2::ggtitle("Caloric restriction treatment")+
   ggplot2::theme(plot.title = element_text(hjust = 0.5,
-                                           size = 14))+
-  ggplot2::geom_text(aes(y = 5.8, label = "FDR Threshold", x = 0))+
+                                           size = 14),
+                 legend.position = "none")+
+  ggplot2::geom_text(aes(y = 5.8, label = "FDR Threshold", x = 0), color = "black")+
   ggplot2::geom_hline(yintercept =  5.560481, linetype = "dashed")+
   ggplot2::xlim(c(-2.5,2.5))+
-  ggplot2::ylim(0,6.5)
+  ggplot2::ylim(0,6.5)+
+  ggplot2::scale_color_manual(values =  colors)+
+  ggrepel::geom_text_repel(
+    data = subset(resultTable_export[[3]], logFC < -1.5 &
+                    -log10(P.Value) > 1.3),
+    aes(logFC,-log10(P.Value), label = SYMBOL),
+    color = "black",
+    fontface = "bold",
+    max.overlaps = 20,
+    arrow = arrow(length = unit(0.02, "npc")),
+    box.padding = 1
 
+  )+
+  ggrepel::geom_text_repel(
+    data = subset(resultTable_export[[3]], logFC > 1.8 &
+                    -log10(P.Value) > 1.3),
+    aes(logFC,-log10(P.Value), label = SYMBOL),
+    color = "black",
+    fontface = "bold",
+    max.overlaps = 20,
+    arrow = arrow(length = unit(0.02, "npc")),
+    box.padding = 1
 
-tiff(here::here("data/figures_PR_CR/Volcanotplots.tif"), res = 300, height = 10, width = 15, units = "cm")
+  )
+
+PR_volc+CR_volc
+
+tiff(here::here("data/figures_PR_CR/Volcanotplots.tif"), res = 300, height = 20, width = 30, units = "cm")
 PR_volc+CR_volc
 dev.off()
 
@@ -308,26 +387,28 @@ dev.off()
 
 #To run this code, first run the data processing in the top of the script.
 
+
 all(colnames(cpm_matrix)==setup_person$Sample_ID)
 #create heatmap for PR
 setup_person_heatmap_PR <- setup_person %>%
   dplyr::filter(Group == "PR_A"|Group == "PR_B") %>%
-  dplyr::arrange(ID)
+  dplyr::arrange(desc(Condition1),ID)
 
 cpm_matrix_PR <- as.data.frame(cpm_matrix) %>%
   dplyr::select(setup_person_heatmap_PR$Sample_ID)
 all(colnames(cpm_matrix_PR)==setup_person_heatmap_PR$Sample_ID)
-colnames()
+
 PR_key <- setup_person_heatmap_PR
 rownames(PR_key) <- PR_key$Sample_ID
 PR_key$ID <- stringr::str_remove_all(PR_key$ID, "Person_")
-PR_key <- PR_key %>%   dplyr::select(Condition1, ID)
+PR_key <- PR_key %>%   dplyr::select(ID, Condition1)
 PR_key$Condition1<-factor(PR_key$Condition1, c("B","A"))
+colnames(PR_key)[2]<-"Treatment"
 cpm_matrix_PR<-as.matrix(cpm_matrix_PR)
 
 PR_hm <- pheatmap::pheatmap(cpm_matrix_PR,
-                            treeheight_col = 0,
-                            treeheight_row = 0,
+                            # treeheight_col = 0,
+                            # treeheight_row = 0,
                             scale = "row",
                             legend = T,
                             na_col = "white",
@@ -347,7 +428,7 @@ PR_hm <- pheatmap::pheatmap(cpm_matrix_PR,
 #make the plot for CR
 setup_person_heatmap_CR <- setup_person %>%
   dplyr::filter(Group == "CR_A"|Group == "CR_B") %>%
-  dplyr::arrange(ID)
+  dplyr::arrange(desc(Condition1),ID)
 
 cpm_matrix_CR <- as.data.frame(cpm_matrix) %>%
   dplyr::select(setup_person_heatmap_CR$Sample_ID)
@@ -359,20 +440,21 @@ rownames(CR_key) <- CR_key$Sample_ID
 CR_key$ID <- case_when(CR_key$ID == "Percon_8C"~"Person_8C",
                        TRUE ~ as.character(CR_key$ID))
 CR_key$ID <- stringr::str_remove_all(CR_key$ID, "Person_")
-CR_key <- CR_key %>%   dplyr::select(Condition1, ID)
+CR_key <- CR_key %>%   dplyr::select(ID, Condition1)
 CR_key$Condition1<-factor(CR_key$Condition1, c("B","A"))
+colnames(CR_key)[2]<-"Treatment"
 cpm_matrix_CR<-as.matrix(cpm_matrix_CR)
 
 CR_hm <- pheatmap::pheatmap(cpm_matrix_CR,
-                            treeheight_col = 0,
-                            treeheight_row = 0,
+                            # treeheight_col = 0,
+                            # treeheight_row = 0,
                             scale = "row",
                             legend = T,
                             na_col = "white",
                             Colv = NA,
                             na.rm = T,
                             cluster_cols = F,
-                            cluster_rows = F,
+                            cluster_rows = T,
                             fontsize_row = 8,
                             fontsize_col = 14,
                             cellwidth = 16,
@@ -380,7 +462,7 @@ CR_hm <- pheatmap::pheatmap(cpm_matrix_CR,
                             annotation_col = CR_key,
                             show_rownames = F,
                             show_colnames = F,
-                            main = "Caloric Restriction"
+                            main = "Caloric Restriction",
 )
 PR_hm <- ggplotify::as.ggplot(PR_hm)
 CR_hm <- ggplotify::as.ggplot(CR_hm)
@@ -390,3 +472,40 @@ CR_hm <- ggplotify::as.ggplot(CR_hm)
 tiff(here::here("data/figures_PR_CR/Heatmaps.tif"), width = 30, height = 30, res = 200, units = "cm", )
 PR_hm+CR_hm
 dev.off()
+
+#run cor and as.dist goes into hclust
+
+cor()
+
+#####Create MDS plots####
+#run the code above to generate the necessary designs and data files
+mdsData <- plotMDS(y, ndim = 3, plot = FALSE)
+group <- as.matrix(setup_person)
+
+
+
+mdsData <-
+  mdsData$eigen.vectors %>% as.data.table() %>%
+  dplyr::mutate(ID = rownames(y$samples)) %>%
+  dplyr::mutate(Group = setup_person$Group,
+                Sex = setup_person$Gender,
+                Person = setup_person$ID) %>%
+  dplyr::select(ID, Group,Sex, Person, V1, V2, V3)
+
+
+setnames(mdsData,
+         c("V1", "V2", "V3", "ID", "Group", "Sex", "Person"),
+         c("dim1", "dim2", "dim3", "ID", "Group", "Sex", "Person"))
+
+pBase <-
+  ggplot(mdsData, aes(x = dim1, y = dim2, colour = Person)) +
+  geom_point(size = 10) +
+  #geom_label(show.legend = FALSE, size = 5) +
+  theme_bw()+
+  theme(axis.title.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        legend.text = element_text(size = 18),
+        plot.title = element_text(size = 22, hjust = 0.5))+
+  ggtitle("MDS Plot")
+pBase
+
